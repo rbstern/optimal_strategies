@@ -21,13 +21,12 @@ data = data$data
 # 1. Remove data without response variable
 data %<>% filter(!is.na(utility))
 
-# Remove outliers
-data %<>% filter(resultado_vl<quantile(resultado_vl,probs = 0.99))
-
 # 2. Main response is utility
-#response <- data$utility
-response <- data$utility
+response <- data$resultado
 
+data %>% 
+  group_by(resultado) %>% 
+  summarise(media_valor=mean(resultado_vl))
 
 # 3. Covariates include:
 # - covars_ant: covariates available before first legal decision
@@ -53,9 +52,7 @@ covariates %<>% select(-valor_acao)
 response <- response[complete.cases(covariates)]
 covariates <- covariates[complete.cases(covariates), ]
 
-hist(response)
-boxplot(response)
-
+table(response)
 
 #####################
 # Data split #
@@ -73,15 +70,13 @@ data_split <- sample(c("Train", "Validation"),
 # Fit random forest #
 #####################
 fitRF <- randomForest(x = as.data.frame(covariates[data_split == "Train",]),
-                      y = response[data_split == "Train"])
+                      y = as.factor(response[data_split == "Train"]))
 varImpPlot(fitRF)
 
 pred <- predict(fitRF, as.data.frame(covariates[data_split == "Validation", ]))
-plot(pred, response[data_split=="Validation"], cex=0.4)
-abline(a=0,b=1)
 
-plot(pred, response[data_split=="Validation"], xlim=c(0,100), ylim=c(0,100), cex=0.4)
-abline(a=0,b=1,lwd=3,col=2)
+table(pred,response[data_split=="Validation"])
+
 
 pred_RF <- pred
 
@@ -97,7 +92,6 @@ covariates_model_matrix <- model.matrix(~.-1,data = covariates_useful)
 fitLinear <- cv.glmnet(x = covariates_model_matrix[data_split == "Train",],
                       y = response[data_split == "Train"])
 plot(fitLinear)
-coefficients(fitLinear)
 
 pred <- predict(fitLinear, covariates_model_matrix[data_split == "Validation", ])
 plot(pred, response[data_split=="Validation"], cex=0.4)
