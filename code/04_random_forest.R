@@ -1,5 +1,6 @@
 library(magrittr)
 library(randomForest)
+library(glmnet)
 library(tidyverse)
 
 #############
@@ -46,15 +47,25 @@ covariates %<>% select(-valor_acao)
 response <- response[complete.cases(covariates)]
 covariates <- covariates[complete.cases(covariates), ]
 
+hist(response)
+boxplot(response)
+
+
 #####################
-# Fit random forest #
+# Data split #
 #####################
+
+
 set.seed(1)
 data_split <- sample(c("Train", "Validation"),
                      size = nrow(covariates),
                      prob = c(0.8, 0.2),
                      replace = TRUE)
 
+
+#####################
+# Fit random forest #
+#####################
 fitRF <- randomForest(x = as.data.frame(covariates[data_split == "Train",]),
                       y = response[data_split == "Train"])
 varImpPlot(fitRF)
@@ -64,4 +75,37 @@ plot(pred, response[data_split=="Validation"], cex=0.4)
 abline(a=0,b=1)
 
 plot(pred, response[data_split=="Validation"], xlim=c(0,100), ylim=c(0,100), cex=0.4)
+abline(a=0,b=1,lwd=3,col=2)
+
+pred_RF <- pred
+
+#####################
+# Fit L1-Linear #
+#####################
+which_useful_covariates <- apply(covariates,2,function(x)length(unique(x))>1)
+   # covariates with more than one value
+covariates_useful <- covariates[,which_useful_covariates]
+
+covariates_model_matrix <- model.matrix(~.-1,data = covariates_useful)
+
+fitLinear <- cv.glmnet(x = covariates_model_matrix[data_split == "Train",],
+                      y = response[data_split == "Train"])
+plot(fitLinear)
+
+pred <- predict(fitLinear, covariates_model_matrix[data_split == "Validation", ])
+plot(pred, response[data_split=="Validation"], cex=0.4)
 abline(a=0,b=1)
+
+plot(pred, response[data_split=="Validation"], xlim=c(0,100), ylim=c(0,100), cex=0.4)
+abline(a=0,b=1,lwd=3,col=2)
+
+pred_linear <- pred
+##################
+## Compute  MSE ##
+##################
+
+mean((pred_RF- response[data_split=="Validation"])^2) # RF
+mean((pred_linear- response[data_split=="Validation"])^2) # Linear
+mean((mean(response[data_split=="Train"])- response[data_split=="Validation"])^2) # Constant
+
+
